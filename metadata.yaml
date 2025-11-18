@@ -1,6 +1,6 @@
 name: astrbot_plugin_rss # 这是你的插件的唯一识别名。
 desc: 支持通过 RSSHub 路由和直接 URL 订阅 RSS 源，并定时获取最新的 RSS 内容。
 help: https://github.com/SXP-Simon/astrbot_plugin_rss
-version: v1.0.1 # 插件版本号。格式：v1.1.1 或者 v1.1
+version: v1.0.2 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: SXP-Simon # 作者
 repo: https://github.com/SXP-Simon/astrbot_plugin_rss # 插件的仓库地址
