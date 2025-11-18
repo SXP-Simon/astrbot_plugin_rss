@@ -276,10 +276,12 @@ class RssPlugin(Star):
                 )
 
     async def _add_url(self, url: str, cron_expr: str, message: AstrMessageEvent):
-        """内部方法：添加URL订阅的共用逻辑"""
+        """内部方法:添加URL订阅的共用逻辑"""
         user = message.unified_msg_origin
         if url in self.data_handler.data:
             latest_item = await self.poll_rss(url)
+            if not latest_item:
+                return message.plain_result(f"无法获取RSS内容,请检查URL是否正确")
             self.data_handler.data[url]["subscribers"][user] = {
                 "cron_expr": cron_expr,
                 "last_update": latest_item[0].pubDate_timestamp,
@@ -288,8 +290,12 @@ class RssPlugin(Star):
         else:
             try:
                 text = await self.parse_channel_info(url)
+                if text is None:
+                    return message.plain_result(f"无法访问该RSS源,请检查URL是否正确")
                 title, desc = self.data_handler.parse_channel_text_info(text)
                 latest_item = await self.poll_rss(url)
+                if not latest_item:
+                    return message.plain_result(f"RSS源无可用内容,请检查URL是否正确")
             except Exception as e:
                 return message.plain_result(f"解析频道信息失败: {str(e)}")
 
