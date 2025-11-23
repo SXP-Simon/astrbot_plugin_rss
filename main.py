@@ -792,6 +792,6 @@ class RssPlugin(Star):
                     name="Astrbot",
                     content=comps
                 )
-            yield event.chain_result([node]).use_t2i(False)
+            yield event.chain_result([node]).use_t2i(True)
         else:
-            yield event.chain_result(comps).use_t2i(False)
+            yield event.chain_result(comps).use_t2i(True)
