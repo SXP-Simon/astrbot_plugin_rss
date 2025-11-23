@@ -15,15 +15,9 @@ from .data_handler import DataHandler
 from .pic_handler import RssImageHandler
 from .rss import RSSItem
 from typing import List
+import os
 
 
-@register(
-    "astrbot_plugin_rss",
-    "Soulter",
-    "RSS订阅插件",
-    "1.1.0",
-    "https://github.com/Soulter/astrbot_plugin_rss",
-)
 class RssPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
@@ -133,7 +127,7 @@ class RssPlugin(Star):
             if len(nodes) > 0:
                 msc = MessageChain(
                     chain=nodes,
-                    use_t2i_= self.t2i
+                    use_t2i_= False
                 )
                 await self.context.send_message(user, msc)
         else:
@@ -142,7 +136,7 @@ class RssPlugin(Star):
                 comps = await self._get_chain_components(item)
                 msc = MessageChain(
                 chain=comps,
-                use_t2i_= self.t2i
+                use_t2i_= False
             )
                 await self.context.send_message(user, msc)
                 self.data_handler.data[url]["subscribers"][user]["last_update"] = int(
@@ -464,41 +458,74 @@ class RssPlugin(Star):
     async def _get_chain_components(self, item: RSSItem):
         """组装消息链"""
         comps = []
+        import datetime
         
-        # 标题和频道信息
-        header = f"📰 {item.chan_title}\n"
-        header += f"{'─' * 30}\n"
-        header += f"📌 {item.title}\n"
-        
-        # 添加作者和分类
-        meta_info = []
-        if item.author:
-            meta_info.append(f"👤 {item.author}")
-        if item.categories:
-            meta_info.append(f"🏷️ {', '.join(item.categories[:3])}")  # 最多显示3个分类
-        if item.pubDate:
-            # 格式化日期显示
-            if item.pubDate_timestamp > 0:
-                import datetime
-                dt = datetime.datetime.fromtimestamp(item.pubDate_timestamp)
-                meta_info.append(f"🕒 {dt.strftime('%Y-%m-%d %H:%M')}")
-        
-        if meta_info:
-            header += " | ".join(meta_info) + "\n"
-        
-        header += f"{'─' * 30}\n"
-        comps.append(Comp.Plain(header))
-        
-        # 内容 - 使用完整内容或描述
+        # 准备数据
+        dt_str = ""
+        if item.pubDate_timestamp > 0:
+            dt = datetime.datetime.fromtimestamp(item.pubDate_timestamp)
+            dt_str = dt.strftime('%Y-%m-%d %H:%M')
+
         content_text = item.get_display_content(self.description_max_length)
-        if content_text:
-            comps.append(Comp.Plain(content_text + "\n"))
+        if not content_text:
+            content_text = ""
+
+        if self.t2i:
+            # 使用 HTML 模板渲染
+            context = {
+                "title": item.title,
+                "date": dt_str,
+                "author": item.author,
+                "source": item.chan_title,
+                "content": content_text
+            }
+            options = {"full_page": True, "type": "jpeg", "quality": 85}
+            try:
+                # 读取模板文件
+                template_path = os.path.join(os.path.dirname(__file__), "template.html")
+                with open(template_path, "r", encoding="utf-8") as f:
+                    template_content = f.read()
+                
+                img_url = await self.html_render(template_content, context, options=options)
+                comps.append(Comp.Image.fromURL(img_url))
+            except Exception as e:
+                self.logger.error(f"HTML Render failed: {e}")
+                comps.append(Comp.Plain(f"图片渲染失败: {e}\n"))
+                # Fallback to plain text header
+                header = f"📰 {item.chan_title}\n{'─' * 30}\n📌 {item.title}\n"
+                if item.author: header += f"👤 {item.author} "
+                if dt_str: header += f"🕒 {dt_str}"
+                header += f"\n{'─' * 30}\n"
+                comps.append(Comp.Plain(header))
+                comps.append(Comp.Plain(content_text + "\n"))
+        else:
+            # 纯文本模式
+            header = f"📰 {item.chan_title}\n"
+            header += f"{'─' * 30}\n"
+            header += f"📌 {item.title}\n"
+            
+            meta_info = []
+            if item.author:
+                meta_info.append(f"👤 {item.author}")
+            if item.categories:
+                meta_info.append(f"🏷️ {', '.join(item.categories[:3])}")
+            if dt_str:
+                meta_info.append(f"🕒 {dt_str}")
+            
+            if meta_info:
+                header += " | ".join(meta_info) + "\n"
+            
+            header += f"{'─' * 30}\n"
+            comps.append(Comp.Plain(header))
+            
+            if content_text:
+                comps.append(Comp.Plain(content_text + "\n"))
         
-        # 链接
+        # 链接 (始终显示)
         if not self.is_hide_url and item.link:
             comps.append(Comp.Plain(f"\n🔗 {item.link}\n"))
         
-        # 附件信息(音频/视频)
+        # 附件信息
         if item.enclosure_url:
             enclosure_info = "\n📎 附件: "
             if "audio" in item.enclosure_type:
@@ -514,10 +541,9 @@ class RssPlugin(Star):
         if item.comments_url:
             comps.append(Comp.Plain(f"💬 评论: {item.comments_url}\n"))
         
-        # 图片
+        # 图片 (始终显示)
         if self.is_read_pic and item.pic_urls:
             comps.append(Comp.Plain(f"\n📷 图片 ({len(item.pic_urls)}张):\n"))
-            # 如果max_pic_item为-1则不限制图片数量
             temp_max_pic_item = len(item.pic_urls) if self.max_pic_item == -1 else self.max_pic_item
             for idx, pic_url in enumerate(item.pic_urls[:temp_max_pic_item], 1):
                 base64str = await self.pic_handler.modify_corner_pixel_to_base64(pic_url)
@@ -527,7 +553,6 @@ class RssPlugin(Star):
                 else:
                     comps.append(Comp.Image.fromBase64(base64str))
             
-            # 如果还有更多图片未显示
             if len(item.pic_urls) > temp_max_pic_item:
                 comps.append(Comp.Plain(f"  ... 还有 {len(item.pic_urls) - temp_max_pic_item} 张图片未显示\n"))
         
@@ -767,6 +792,6 @@ class RssPlugin(Star):
                     name="Astrbot",
                     content=comps
                 )
-            yield event.chain_result([node]).use_t2i(self.t2i)
+            yield event.chain_result([node]).use_t2i(False)
         else:
-            yield event.chain_result(comps).use_t2i(self.t2i)
+            yield event.chain_result(comps).use_t2i(False)
