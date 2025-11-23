@@ -470,7 +470,7 @@ class RssPlugin(Star):
         if not content_text:
             content_text = ""
 
-        if self.t2i:
+        if True: # Always use template to ensure consistency
             # 使用 HTML 模板渲染
             context = {
                 "title": item.title,
