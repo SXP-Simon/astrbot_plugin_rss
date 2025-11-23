@@ -1,7 +1,6 @@
 name: Auto Release on Version Update
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - master
